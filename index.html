@@ -1,4 +1,3 @@
-<!DOCTYPE html>
 <html>
 <head>
     <title>Белый треугольник (2 биржи)</title>
@@ -96,7 +95,7 @@
         <h1>Расчет дохода по белому треугольнику</h1>
 
         <div>
-            Сумма (RUB): <input type="number" id="triangleAmountRub" value="100000">
+            Сумма (USDT): <input type="number" id="triangleAmountRub" value="1000">
         </div>
 
         <div id="exchanges">
@@ -111,9 +110,9 @@
 
     <script>
         let exchanges = [
-            { name: "HTX", buyRate: null, sellRate: null, merchant: true },
-            { name: "ByBit", buyRate: null, sellRate: null, merchant: false },
-            { name: "BitGet", buyRate: null, sellRate: null, merchant: true }
+            { name: "HTX", buyRate: 101, sellRate: 100, merchant: true },
+            { name: "ByBit", buyRate: 102, sellRate: 101, merchant: false },
+            { name: "BitGet", buyRate: 103, sellRate: 102, merchant: true }
         ];
 
         // Функция для создания div'а биржи
@@ -206,35 +205,63 @@
 
             const triangles = [];
 
+           
+
             for (let i = 0; i < numExchanges; i++) {
                 for (let j = 0; j < numExchanges; j++) {
                     if (i === j) continue;
 
                     const results = calculateProfit(exchanges[i], exchanges[j], startAmountRub);
+                    
                     results.forEach(result => {
                         if (result.profitRub > 0) {
+
+                            // Исправленная логика определения isMakerFirst
+                            let isMakerFirst = false;
+                            if (result.details.includes("мейкер")) {
+                                if (result.details.includes("тейкер")) {
+                                    isMakerFirst = result.details.indexOf("мейкер") < result.details.indexOf("тейкер");
+                                } else {
+                                    isMakerFirst = true; // Если только мейкер, то он первый
+                                }
+                            }
+
+
                             triangles.push({
-                                exchanges: [exchanges[j].name, exchanges[i].name],
-                                ...result
+                                exchanges: [exchanges[i].name, exchanges[j].name],
+                                ...result,
+                                isMakerFirst: isMakerFirst
                             });
                         }
                     });
                 }
             }
 
-            triangles.sort((a, b) => b.profitRub - a.profitRub);
+
+            // Сортируем по isMakerFirst и прибыли
+            triangles.sort((a, b) => {
+                if (a.isMakerFirst && !b.isMakerFirst) {
+                    return -1;
+                } else if (!a.isMakerFirst && b.isMakerFirst) {
+                    return 1;
+                } else {
+                    return b.profitRub - a.profitRub;
+                }
+            });
 
             if (triangles.length === 0) {
                 resultsDiv.innerHTML = "<p>Нет прибыльных треугольников</p>";
                 return;
             }
 
-            let tableHtml = '<table><tr><th>Биржи</th><th>Сумма (RUB)</th><th>Доход (RUB)</th><th>Детали</th></tr>';
+            let tableHtml = '<table><tr><th>Биржи</th><th>Сумма (USDT)</th><th>Доход (USDT)</th><th>Спред (%)</th><th>Детали</th></tr>';
             triangles.forEach(triangle => {
+                const spread = (triangle.profitRub / triangle.startAmountRub) * 100;
                 tableHtml += `<tr>
-            <td>${triangle.exchanges.join(' -> ')}</td>
-            <td>${triangle.startAmountRub}</td>
-            <td>${triangle.profitRub.toFixed(2)}</td>
+            <td><br>${triangle.exchanges.join(' -> ')}<br></td>
+            <td>${triangle.startAmountRub}$</td>
+            <td>${triangle.profitRub.toFixed(2)}$ (${(triangle.profitRub * triangle.sellOption.rate).toFixed(2)} RUB)</td>
+            <td>${spread.toFixed(2)}%</td>
             <td>${triangle.details}</td> 
         </tr>`;
             });
@@ -246,39 +273,73 @@
             const commissionUsd = 1;
             const results = [];
 
-            const buyOptions = ex2.merchant ? [ex2.buyRate, ex2.sellRate] : [ex2.buyRate];
-            const sellOptions = ex1.merchant ? [ex1.buyRate, ex1.sellRate] : [ex1.sellRate];
+            const ex1IsMaker = ex1.merchant;
+            const ex2IsMaker = ex2.merchant;
 
-            buyOptions.forEach(buyRate => {
-                sellOptions.forEach(sellRate => {
-                    const amountBuyRub = startAmountRub;
-                    const amountBuyUsd = amountBuyRub / buyRate;
-                    const amountSellUsd = amountBuyUsd - commissionUsd;
-                    const amountSellRub = amountSellUsd * sellRate;
-                    const profitRub = amountSellRub - startAmountRub;
+            const buyOptions = ex2IsMaker ? [{ rate: ex2.sellRate, type: "мейкер" }, { rate: ex2.buyRate, type: "тейкер" }] : [{ rate: ex2.buyRate, type: "тейкер" }];
+            const sellOptions = ex1IsMaker ? [{ rate: ex1.buyRate, type: "мейкер" }, { rate: ex1.sellRate, type: "тейкер" }] : [{ rate: ex1.sellRate, type: "тейкер" }];
 
-                    const buyType = buyRate === ex2.buyRate ? "как тейкер" : "как мейкер в стакане продать";
-                    const sellType = sellRate === ex1.sellRate ? "как тейкер" : "как мейкер в стакане купить";
+            buyOptions.forEach(buyOption => {
+                sellOptions.forEach(sellOption => {
 
-                    // Пропускаем варианты, где и покупка, и продажа - мейкерские
-                    if (!(buyType.includes("мейкер") && sellType.includes("мейкер"))) {
-                        const details = `
-                    Покупка на ${ex2.name} (${buyType}): ${amountBuyUsd.toFixed(2)} USD за ${amountBuyRub.toFixed(2)} RUB<br>
-                    Продажа на ${ex1.name} (${sellType}): ${amountSellUsd.toFixed(2)} USD за ${amountSellRub.toFixed(2)} RUB<br>
-                `;
+                    if(buyOption.type === "тейкер" || sellOption.type === "тейкер") {
 
-                        if (profitRub > 0) {
-                            results.push({
-                                profitRub,
-                                startAmountRub,
-                                details,
-                                amountBuyUsd,
-                                amountBuyRub,
-                                amountSellUsd,
-                                amountSellRub
-                            });
+                        let amountBuyRub = startAmountRub;
+                        let amountSellRub;
+                        let amountBuyUsd; // Объявляем amountBuyUsd здесь
+                        let amountSellUsd;
+                        let details;
+
+                        if (sellOption.type === "мейкер") { //Sell = maker, buy = ex1, sell = ex2
+                            
+                            let prodazaRub = startAmountRub * sellOption.rate;
+
+                            let pokupa = prodazaRub / buyOption.rate;
+                            
+                            details = `                        
+                                Продажа на ${ex1.name} (${sellOption.type} стакан покупки): <br>${startAmountRub.toFixed(2)} USDT за ${prodazaRub.toFixed(2)} RUB<br>
+                                Покупка на ${ex2.name} (${buyOption.type}): <br>${pokupa.toFixed(2)} USDT за ${prodazaRub.toFixed(2)} RUB<br>
+                            `;
+
+                            const profitRub = pokupa - startAmountRub // amountSellUsd*sellOption.rate = startAmountRub
+                            //const profitRub = amountSellRub - startAmountRub;
+                            if (profitRub > 0) {
+                                results.push({ profitRub, startAmountRub: startAmountRub, details, amountBuyUsd, sellOption, amountBuyRub, amountSellUsd: amountSellUsd, amountSellRub: amountBuyRub }); // Results push updated
+                            }
+
+
+                        } else if (buyOption.type === "мейкер") { //Buy = maker, sell = taker, buy = ex2, sell = ex1
+                            let prodazaRub = startAmountRub * sellOption.rate;
+                            let pokupka = prodazaRub / buyOption.rate;
+
+                            let details = `
+                                Покупка на ${ex2.name} (${buyOption.type} стакан продажи): <br>${pokupka.toFixed(2)} USDT за ${prodazaRub.toFixed(2)} RUB<br>
+                                Продажа на ${ex1.name} (${sellOption.type}): <br>${startAmountRub.toFixed(2)} USDT за ${prodazaRub.toFixed(2)} RUB<br>
+                            `;
+
+                            const profitRub = pokupka - startAmountRub;
+                            if (profitRub > 0) {
+                                results.push({ profitRub, startAmountRub, details, amountBuyUsd, amountBuyRub, sellOption, amountSellUsd: amountBuyUsd - commissionUsd, amountSellRub });
+                            }
+
+                        } else { // Buy = taker, Sell = taker, buy = ex2, sell = ex1
+                            let prodazaRub = startAmountRub * sellOption.rate; // Продаю на сумму
+                            let pokupka = prodazaRub / buyOption.rate; // Объявляем локально
+                            let details = `
+                                Покупка на ${ex2.name} (${buyOption.type}): <br>${pokupka.toFixed(2)} USDT за ${prodazaRub.toFixed(2)} RUB<br>
+                                Продажа на ${ex1.name} (${sellOption.type}): <br>${startAmountRub} USDT за ${prodazaRub.toFixed(2)} RUB<br>
+                            `;
+
+                            const profitRub = pokupka - startAmountRub;
+
+
+                            if (profitRub > 0) {
+                                results.push({ profitRub, startAmountRub, details, amountBuyUsd, amountBuyRub, sellOption, amountSellUsd: amountBuyUsd - commissionUsd, amountSellRub });
+                            }
                         }
+
                     }
+
                 });
             });
 
