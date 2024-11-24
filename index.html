@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Белый треугольник (2 биржи)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .exchange {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+
+        input[type="number"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+            button:hover {
+                background-color: #45a049;
+            }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #f2f2f2;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 10px;
+            }
+
+            .exchange {
+                padding: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Расчет дохода по белому треугольнику</h1>
+
+        <div>
+            Сумма (RUB): <input type="number" id="triangleAmountRub" value="100000">
+        </div>
+
+        <div id="exchanges">
+            
+        </div>
+
+        <button onclick="addExchange()">Добавить биржу</button>
+        <button onclick="calculateTriangles()">Рассчитать</button>
+
+        <div id="results"></div>
+    </div>
+
+    <script>
+        let exchanges = [
+            { name: "HTX", buyRate: null, sellRate: null, merchant: true },
+            { name: "ByBit", buyRate: null, sellRate: null, merchant: false },
+            { name: "BitGet", buyRate: null, sellRate: null, merchant: true }
+        ];
+
+        // Функция для создания div'а биржи
+        function createExchangeDiv(exchangeId, exchangeData = {}) {
+            const exchangeDiv = document.createElement('div');
+            exchangeDiv.className = "exchange";
+            exchangeDiv.id = `exchange${exchangeId}`;
+            exchangeDiv.innerHTML = `
+        <h3>${exchangeData.name || `Биржа ${exchangeId + 1}`}</h3>
+        Название: <input type="text" id="exchangeName${exchangeId}" value="${exchangeData.name || ''}"><br>
+        Курс покупки (RUB/USDT): <input type="number" id="buyRate${exchangeId}" value="${exchangeData.buyRate || ''}"><br>
+        Курс продажи (RUB/USDT): <input type="number" id="sellRate${exchangeId}" value="${exchangeData.sellRate || ''}"><br>
+        Мерчант: <input type="checkbox" id="merchant${exchangeId}" ${exchangeData.merchant ? 'checked' : ''}> <br>
+        <button onclick="removeExchange(${exchangeId})">Удалить</button>
+    `;
+            return exchangeDiv;
+        }
+
+        // Добавляем начальные биржи в DOM
+        exchanges.forEach((exchange, index) => {
+            document.getElementById('exchanges').appendChild(createExchangeDiv(index, exchange));
+        });
+
+        function addExchange() {
+            const exchangeId = exchanges.length;
+            const exchangeDiv = createExchangeDiv(exchangeId);
+            document.getElementById('exchanges').appendChild(exchangeDiv);
+            exchanges.push({ name: "", buyRate: null, sellRate: null, merchant: false });
+        }
+
+        function removeExchange(exchangeId) {
+            const elementToRemove = document.getElementById(`exchange${exchangeId}`);
+            if (elementToRemove) {
+                elementToRemove.remove();
+            }
+
+            exchanges.splice(exchangeId, 1);
+
+            // Переиндексация оставшихся бирж
+            const exchangesDiv = document.getElementById('exchanges');
+            const remainingExchanges = exchangesDiv.querySelectorAll('.exchange');
+
+            remainingExchanges.forEach((exchangeDiv, index) => {
+                exchangeDiv.id = `exchange${index}`;
+                const removeButton = exchangeDiv.querySelector('button');
+                removeButton.onclick = () => removeExchange(index);
+
+                const nameInput = exchangeDiv.querySelector('[id^="exchangeName"]');
+                nameInput.id = `exchangeName${index}`;
+
+                const buyRateInput = exchangeDiv.querySelector('[id^="buyRate"]');
+                buyRateInput.id = `buyRate${index}`;
+
+                const sellRateInput = exchangeDiv.querySelector('[id^="sellRate"]');
+                sellRateInput.id = `sellRate${index}`;
+
+                const merchantCheckbox = exchangeDiv.querySelector('[id^="merchant"]');
+                merchantCheckbox.id = `merchant${index}`;
+            });
+
+            // Обновляем данные в массиве exchanges
+            exchanges = Array.from(remainingExchanges).map((exchangeDiv, index) => {
+                return {
+                    name: exchangeDiv.querySelector(`#exchangeName${index}`).value || "",
+                    buyRate: parseFloat(exchangeDiv.querySelector(`#buyRate${index}`).value) || null,
+                    sellRate: parseFloat(exchangeDiv.querySelector(`#sellRate${index}`).value) || null,
+                    merchant: exchangeDiv.querySelector(`#merchant${index}`).checked // сохраняем состояние чекбокса
+                };
+            });
+        }
+
+        function calculateTriangles() {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '';
+
+            const numExchanges = exchanges.length;
+            if (numExchanges < 2) {
+                resultsDiv.innerHTML = '<p>Добавьте хотя бы 2 биржи.</p>';
+                return;
+            }
+
+            const startAmountRub = parseFloat(document.getElementById("triangleAmountRub").value) || 100000;
+
+            for (let i = 0; i < numExchanges; i++) {
+                exchanges[i].name = document.getElementById(`exchangeName${i}`).value || exchanges[i].name || "";
+                exchanges[i].buyRate = parseFloat(document.getElementById(`buyRate${i}`).value) || exchanges[i].buyRate || 0;
+                exchanges[i].sellRate = parseFloat(document.getElementById(`sellRate${i}`).value) || exchanges[i].sellRate || 0;
+                exchanges[i].merchant = document.getElementById(`merchant${i}`).checked;
+            }
+
+            const triangles = [];
+
+            for (let i = 0; i < numExchanges; i++) {
+                for (let j = 0; j < numExchanges; j++) {
+                    if (i === j) continue;
+
+                    const results = calculateProfit(exchanges[i], exchanges[j], startAmountRub);
+                    results.forEach(result => {
+                        if (result.profitRub > 0) {
+                            triangles.push({
+                                exchanges: [exchanges[j].name, exchanges[i].name],
+                                ...result
+                            });
+                        }
+                    });
+                }
+            }
+
+            triangles.sort((a, b) => b.profitRub - a.profitRub);
+
+            if (triangles.length === 0) {
+                resultsDiv.innerHTML = "<p>Нет прибыльных треугольников</p>";
+                return;
+            }
+
+            let tableHtml = '<table><tr><th>Биржи</th><th>Сумма (RUB)</th><th>Доход (RUB)</th><th>Детали</th></tr>';
+            triangles.forEach(triangle => {
+                tableHtml += `<tr>
+            <td>${triangle.exchanges.join(' -> ')}</td>
+            <td>${triangle.startAmountRub}</td>
+            <td>${triangle.profitRub.toFixed(2)}</td>
+            <td>${triangle.details}</td> 
+        </tr>`;
+            });
+            tableHtml += '</table>';
+            resultsDiv.innerHTML = tableHtml;
+        }
+
+        function calculateProfit(ex1, ex2, startAmountRub) {
+            const commissionUsd = 1;
+            const results = [];
+
+            const buyOptions = ex2.merchant ? [ex2.buyRate, ex2.sellRate] : [ex2.buyRate];
+            const sellOptions = ex1.merchant ? [ex1.buyRate, ex1.sellRate] : [ex1.sellRate];
+
+            buyOptions.forEach(buyRate => {
+                sellOptions.forEach(sellRate => {
+                    const amountBuyRub = startAmountRub;
+                    const amountBuyUsd = amountBuyRub / buyRate;
+                    const amountSellUsd = amountBuyUsd - commissionUsd;
+                    const amountSellRub = amountSellUsd * sellRate;
+                    const profitRub = amountSellRub - startAmountRub;
+
+                    const buyType = buyRate === ex2.buyRate ? "как тейкер" : "как мейкер в стакане продать";
+                    const sellType = sellRate === ex1.sellRate ? "как тейкер" : "как мейкер в стакане купить";
+
+                    // Пропускаем варианты, где и покупка, и продажа - мейкерские
+                    if (!(buyType.includes("мейкер") && sellType.includes("мейкер"))) {
+                        const details = `
+                    Покупка на ${ex2.name} (${buyType}): ${amountBuyUsd.toFixed(2)} USD за ${amountBuyRub.toFixed(2)} RUB<br>
+                    Продажа на ${ex1.name} (${sellType}): ${amountSellUsd.toFixed(2)} USD за ${amountSellRub.toFixed(2)} RUB<br>
+                `;
+
+                        if (profitRub > 0) {
+                            results.push({
+                                profitRub,
+                                startAmountRub,
+                                details,
+                                amountBuyUsd,
+                                amountBuyRub,
+                                amountSellUsd,
+                                amountSellRub
+                            });
+                        }
+                    }
+                });
+            });
+
+            return results;
+        }
+    </script>
+
+</body>
+</html>
